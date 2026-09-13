@@ -26,6 +26,15 @@ _SOURCE_EXTENSIONS = (
     "c", "cpp", "h", "sh", "sql", "html", "css",
 )
 
+# Suffixes indicating a dotted token is a domain/hostname or non-code data file,
+# rather than an internal code symbol (Class.attr, module.function).
+_NON_CODE_DOTTED_SUFFIXES = frozenset({
+    # TLD-ish suffixes
+    "com", "org", "io", "net", "dev", "ai",
+    # data/file suffixes
+    "txt", "md", "lock", "cfg",
+})
+
 
 def _build_excluded_terms() -> frozenset[str]:
     """Build the set of vocabulary and terms that should not be classified
@@ -33,7 +42,7 @@ def _build_excluded_terms() -> frozenset[str]:
     terms: set[str] = {
         # General non-mechanism terms and common protocol/environment words
         "true", "false", "null", "none", "json", "http", "https", "github", "gitlab",
-        "pytest", "python", "node", "npm", "api", "ci", "pr", "url", "sdk", "cli",
+        "pytest", "python", "node", "npm", "pypi", "api", "ci", "pr", "url", "sdk", "cli",
         "wip", "db", "ui", "id", "os", "rest", "sql", "git", "utf8", "ascii",
         "blocker", "error", "failed", "warning", "info", "debug",
         "timeout", "timed_out", "retry_after", "status_code", "status_codes",
@@ -84,6 +93,9 @@ def extract_code_mechanisms(text: str) -> list[str]:
     # 1. Backticked expressions: `symbol` or `path/file.py` or `Class.method`
     for match in re.findall(r"`([^`]+)`", text):
         cleaned = match.strip()
+        last_part = cleaned.split(".")[-1].lower() if "." in cleaned else ""
+        if last_part in _NON_CODE_DOTTED_SUFFIXES:
+            continue
         if cleaned and cleaned.lower() not in _EXCLUDED_TERMS and cleaned not in mechanisms:
             mechanisms.append(cleaned)
 
@@ -97,6 +109,9 @@ def extract_code_mechanisms(text: str) -> list[str]:
     # 3. Dotted symbols (e.g. ClaudeBackend._options, module.function, Class.attr)
     dotted_pattern = r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\b"
     for match in re.findall(dotted_pattern, text):
+        last_part = match.split(".")[-1].lower()
+        if last_part in _NON_CODE_DOTTED_SUFFIXES:
+            continue
         if match not in mechanisms and match.lower() not in _EXCLUDED_TERMS:
             mechanisms.append(match)
 

@@ -448,6 +448,34 @@ def test_already_low_confidence_unsupported_mechanism_not_increased():
     assert b.confidence == 0.3
 
 
+def test_hostnames_and_data_file_extensions_do_not_trigger_mechanism_demotion():
+    """Hostnames (api.anthropic.com, github.com, registry.npmjs.org), package registries
+    (PyPI), and data/doc files (requirements.txt, README.md) are not code mechanisms
+    and do not trigger ungrounded code mechanism demotion."""
+    for hypothesis in [
+        "Connection timeout to api.anthropic.com during completion",
+        "Failed to reach github.com to fetch remote repository branch",
+        "Could not download package from registry.npmjs.org",
+        "Failed to download wheel from PyPI due to network timeout",
+        "missing dependency in requirements.txt",
+        "installation instructions in README.md missing required flag",
+    ]:
+        text = f"""
+        BLOCKER_JSON_START
+        {{
+          "category": "TRANSIENT_INFRA",
+          "confidence": 0.9,
+          "root_cause_hypothesis": "{hypothesis}",
+          "evidence": "Network error connecting to remote endpoint",
+          "question": "Retry after endpoint recovery?"
+        }}
+        BLOCKER_JSON_END
+        """
+        b = parse_blocker(text)
+        assert b is not None
+        assert b.confidence == 0.9, f"Failed for hypothesis: {hypothesis}"
+
+
 def test_extract_code_mechanisms_and_support_helpers():
     """Unit tests for extract_code_mechanisms and is_code_mechanism_supported."""
     mechs = extract_code_mechanisms("`ClaudeBackend._options` is missing `permission_mode` in backend.py:540")
@@ -461,6 +489,10 @@ def test_extract_code_mechanisms_and_support_helpers():
 
     # Taxonomy words are excluded
     assert extract_code_mechanisms("MISSING_ACCESS rate_limit retry_after root_cause_hypothesis") == []
+
+    # Hostnames, package repositories, and non-code file extensions are excluded
+    assert extract_code_mechanisms("api.anthropic.com github.com registry.npmjs.org requirements.txt README.md PyPI") == []
+    assert extract_code_mechanisms("PyPI") == []
 
     # Supported checking: ALL mechanisms must be supported
     assert is_code_mechanism_supported([], "") is True
